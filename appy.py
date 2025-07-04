@@ -44,25 +44,25 @@ if st.sidebar.button("🔎 Tampilkan Visualisasi"):
     is_contour = False
     is_vector = False
 
-    # Ekstrak parameter sesuai pilihan
+    # Parameter grid
     if "pratesfc" in parameter:
-        var = ds["pratesfc"][forecast_hour, :, :] * 3600
+        var = ds["pratesfc"][forecast_hour, :, :] * 3600  # konversi mm/jam
         label = "Curah Hujan (mm/jam)"
         cmap = "Blues"
     elif "tmp2m" in parameter:
-        var = ds["tmp2m"][forecast_hour, :, :] - 273.15
+        var = ds["tmp2m"][forecast_hour, :, :] - 273.15  # K ke °C
         label = "Suhu (°C)"
         cmap = "coolwarm"
     elif "ugrd10m" in parameter:
         u = ds["ugrd10m"][forecast_hour, :, :]
         v = ds["vgrd10m"][forecast_hour, :, :]
-        speed = (u**2 + v**2)**0.5 * 1.94384  # konversi ke knot
+        speed = (u**2 + v**2)**0.5 * 1.94384  # knot
         var = speed
         label = "Kecepatan Angin (knot)"
         cmap = plt.cm.get_cmap("RdYlGn_r", 10)
         is_vector = True
     elif "prmsl" in parameter:
-        var = ds["prmslmsl"][forecast_hour, :, :] / 100
+        var = ds["prmslmsl"][forecast_hour, :, :] / 100  # Pa ke hPa
         label = "Tekanan Permukaan Laut (hPa)"
         cmap = "cool"
         is_contour = True
@@ -70,13 +70,13 @@ if st.sidebar.button("🔎 Tampilkan Visualisasi"):
         st.warning("Parameter tidak dikenali.")
         st.stop()
 
-    # Filter wilayah Sumatera: 5 LU - 0 LS dan 95 - 106 BT
-    var = var.sel(lat=slice(5, 0), lon=slice(95, 106))
+    # Potong wilayah Sumatera: 5 LU - 0 LS dan 95 - 106 BT
+    var = var.sel(lat=slice(5, 0), lon=slice(95, 106)).transpose('lat', 'lon')
     if is_vector:
-        u = u.sel(lat=slice(5, 0), lon=slice(95, 106))
-        v = v.sel(lat=slice(5, 0), lon=slice(95, 106))
+        u = u.sel(lat=slice(5, 0), lon=slice(95, 106)).transpose('lat', 'lon')
+        v = v.sel(lat=slice(5, 0), lon=slice(95, 106)).transpose('lat', 'lon')
 
-    # Meshgrid untuk pcolormesh
+    # Meshgrid untuk plotting
     lon2d, lat2d = np.meshgrid(var.lon, var.lat)
 
     # Plotting
@@ -89,11 +89,8 @@ if st.sidebar.button("🔎 Tampilkan Visualisasi"):
     valid_str = valid_dt.strftime("%HUTC %a %d %b %Y")
     tstr = f"t+{forecast_hour:03d}"
 
-    title_left = f"{label} Valid {valid_str}"
-    title_right = f"GFS {tstr}"
-
-    ax.set_title(title_left, loc="left", fontsize=10, fontweight="bold")
-    ax.set_title(title_right, loc="right", fontsize=10, fontweight="bold")
+    ax.set_title(f"{label} Valid {valid_str}", loc="left", fontsize=10, fontweight="bold")
+    ax.set_title(f"GFS {tstr}", loc="right", fontsize=10, fontweight="bold")
 
     if is_contour:
         cs = ax.contour(lon2d, lat2d, var.values,

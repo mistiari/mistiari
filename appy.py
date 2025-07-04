@@ -4,13 +4,14 @@ import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import pandas as pd
+import numpy as np
 from datetime import datetime
 
 st.set_page_config(page_title="Prakiraan Cuaca Wilayah Indonesia", layout="wide")
 
 st.title("📡 Global Forecast System Viewer Wilayah Sumatera (Realtime via NOMADS)")
 st.header("Web Hasil Pembelajaran Pengelolaan Informasi Meteorologi")
-st.subheader("UAS a.n Mistiari NPT. 14.24.0007 :sunglasses:")
+st.subheader("UAS a.n Mistiari NPT. 14.24.0007 😎")
 
 @st.cache_data
 def load_dataset(run_date, run_hour):
@@ -43,7 +44,7 @@ if st.sidebar.button("🔎 Tampilkan Visualisasi"):
     is_contour = False
     is_vector = False
 
-    # Ekstrak parameter
+    # Ekstrak parameter sesuai pilihan
     if "pratesfc" in parameter:
         var = ds["pratesfc"][forecast_hour, :, :] * 3600
         label = "Curah Hujan (mm/jam)"
@@ -55,7 +56,7 @@ if st.sidebar.button("🔎 Tampilkan Visualisasi"):
     elif "ugrd10m" in parameter:
         u = ds["ugrd10m"][forecast_hour, :, :]
         v = ds["vgrd10m"][forecast_hour, :, :]
-        speed = (u**2 + v**2)**0.5 * 1.94384  # knot
+        speed = (u**2 + v**2)**0.5 * 1.94384  # konversi ke knot
         var = speed
         label = "Kecepatan Angin (knot)"
         cmap = plt.cm.get_cmap("RdYlGn_r", 10)
@@ -69,18 +70,20 @@ if st.sidebar.button("🔎 Tampilkan Visualisasi"):
         st.warning("Parameter tidak dikenali.")
         st.stop()
 
-    # Filter wilayah Sumatera: 95 - 106 BT, 5 LU - 0 (Lintang Selatan)
+    # Filter wilayah Sumatera: 5 LU - 0 LS dan 95 - 106 BT
     var = var.sel(lat=slice(5, 0), lon=slice(95, 106))
     if is_vector:
         u = u.sel(lat=slice(5, 0), lon=slice(95, 106))
         v = v.sel(lat=slice(5, 0), lon=slice(95, 106))
 
-    # Buat plot
+    # Meshgrid untuk pcolormesh
+    lon2d, lat2d = np.meshgrid(var.lon, var.lat)
+
+    # Plotting
     fig = plt.figure(figsize=(10, 6))
     ax = plt.axes(projection=ccrs.PlateCarree())
     ax.set_extent([95, 106, 0, 5], crs=ccrs.PlateCarree())
 
-    # Info waktu
     valid_time = ds.time[forecast_hour].values
     valid_dt = pd.to_datetime(str(valid_time))
     valid_str = valid_dt.strftime("%HUTC %a %d %b %Y")
@@ -92,28 +95,25 @@ if st.sidebar.button("🔎 Tampilkan Visualisasi"):
     ax.set_title(title_left, loc="left", fontsize=10, fontweight="bold")
     ax.set_title(title_right, loc="right", fontsize=10, fontweight="bold")
 
-    # Plot kontur atau pcolormesh
     if is_contour:
-        cs = ax.contour(var.lon, var.lat, var.values,
+        cs = ax.contour(lon2d, lat2d, var.values,
                         levels=15, colors='black',
                         linewidths=0.8, transform=ccrs.PlateCarree())
         ax.clabel(cs, fmt="%d", colors='black', fontsize=8)
     else:
-        im = ax.pcolormesh(var.lon, var.lat, var.values,
+        im = ax.pcolormesh(lon2d, lat2d, var.values,
                            cmap=cmap, vmin=0, vmax=50,
                            transform=ccrs.PlateCarree(),
-                           shading="auto")  # Fix utama
-
+                           shading="auto")
         cbar = plt.colorbar(im, ax=ax, orientation='vertical', pad=0.02)
         cbar.set_label(label)
 
         if is_vector:
-            ax.quiver(var.lon[::5], var.lat[::5],
+            ax.quiver(lon2d[::5, ::5], lat2d[::5, ::5],
                       u.values[::5, ::5], v.values[::5, ::5],
                       transform=ccrs.PlateCarree(),
                       scale=700, width=0.002, color='black')
 
-    # Tambah fitur peta
     ax.coastlines(resolution='10m', linewidth=0.8)
     ax.add_feature(cfeature.BORDERS, linestyle=':')
     ax.add_feature(cfeature.LAND, facecolor='lightgray')

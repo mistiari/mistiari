@@ -8,8 +8,9 @@ from datetime import datetime
 
 st.set_page_config(page_title="Prakiraan Cuaca Wilayah Indonesia", layout="wide")
 
-st.title("📡 Global Forecast System Viewer (Realtime via NOMADS)")
+st.title("📡 Global Forecast System Viewer Wilayah Sumatera (Realtime via NOMADS)")
 st.header("Web Hasil Pembelajaran Pengelolaan Informasi Meteorologi")
+st.subheader("UAS a.n Mistiari NPT. 14.24.0007 :sunglasses:")
 
 @st.cache_data
 def load_dataset(run_date, run_hour):
@@ -68,16 +69,16 @@ if st.sidebar.button("🔎 Tampilkan Visualisasi"):
         st.stop()
 
     # Filter wilayah Indonesia: 90 - 150 BT (lon), -15 - 15 LS/LU (lat)
-    var = var.sel(lat=slice(-15, 15), lon=slice(90, 150))
+    var = var.sel(lat=slice(5, 0), lon=slice(95, 106))
 
     if is_vector:
-        u = u.sel(lat=slice(-15, 15), lon=slice(90, 150))
-        v = v.sel(lat=slice(-15, 15), lon=slice(90, 150))
+        u = u.sel(lat=slice(5, 0), lon=slice(95, 106))
+        v = v.sel(lat=slice(5, 0), lon=slice(95, 106))
 
     # Buat plot dengan cartopy
     fig = plt.figure(figsize=(10, 6))
     ax = plt.axes(projection=ccrs.PlateCarree())
-    ax.set_extent([90, 150, -15, 15], crs=ccrs.PlateCarree())
+    ax.set_extent([95, 106, 5, 0], crs=ccrs.PlateCarree())
 
     # Format waktu validasi
     valid_time = ds.time[forecast_hour].values

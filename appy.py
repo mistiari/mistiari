@@ -7,18 +7,15 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
-# Konfigurasi awal Streamlit
 st.set_page_config(page_title="GFS Viewer Sumatera", layout="wide")
 st.title("📡 Global Forecast System Viewer Wilayah Sumatera")
 st.header("Web Hasil Pembelajaran Pengelolaan Informasi Meteorologi")
 st.subheader("UAS a.n Mistiari NPT. 14.24.0007 😎")
 
-# Fungsi untuk load data dari NOMADS
 @st.cache_data
 def load_dataset(run_date, run_hour):
     base_url = f"https://nomads.ncep.noaa.gov/dods/gfs_0p25_1hr/gfs{run_date}/gfs_0p25_1hr_{run_hour}z"
-    ds = xr.open_dataset(base_url)
-    return ds
+    return xr.open_dataset(base_url)
 
 # Sidebar
 st.sidebar.title("⚙️ Pengaturan")
@@ -33,7 +30,6 @@ parameter = st.sidebar.selectbox("Parameter", [
     "Tekanan Permukaan Laut (prmslmsl)"
 ])
 
-# Tombol tampilkan
 if st.sidebar.button("🔎 Tampilkan Visualisasi"):
     try:
         ds = load_dataset(run_date.strftime("%Y%m%d"), run_hour)
@@ -45,39 +41,54 @@ if st.sidebar.button("🔎 Tampilkan Visualisasi"):
     is_vector = False
     is_contour = False
 
-    # Pemilihan parameter
-    if "pratesfc" in parameter:
-        var = ds["pratesfc"][forecast_hour, :, :] * 3600
-        label = "Curah Hujan (mm/jam)"
-        cmap = "Blues"
-    elif "tmp2m" in parameter:
-        var = ds["tmp2m"][forecast_hour, :, :] - 273.15
-        label = "Suhu (°C)"
-        cmap = "coolwarm"
-    elif "ugrd10m" in parameter:
-        u = ds["ugrd10m"][forecast_hour, :, :]
-        v = ds["vgrd10m"][forecast_hour, :, :]
-        speed = (u**2 + v**2)**0.5 * 1.94384  # m/s ke knot
-        var = speed
-        label = "Kecepatan Angin (knot)"
-        cmap = "YlGnBu"
-        is_vector = True
-    elif "prmsl" in parameter:
-        var = ds["prmslmsl"][forecast_hour, :, :] / 100
-        label = "Tekanan Permukaan Laut (hPa)"
-        cmap = "cool"
-        is_contour = True
-    else:
-        st.warning("⚠️ Parameter tidak dikenali.")
+    # Pilih parameter
+    try:
+        if "pratesfc" in parameter:
+            var = ds["pratesfc"][forecast_hour, :, :] * 3600
+            label = "Curah Hujan (mm/jam)"
+            cmap = "Blues"
+        elif "tmp2m" in parameter:
+            var = ds["tmp2m"][forecast_hour, :, :] - 273.15
+            label = "Suhu (°C)"
+            cmap = "coolwarm"
+        elif "ugrd10m" in parameter:
+            u = ds["ugrd10m"][forecast_hour, :, :]
+            v = ds["vgrd10m"][forecast_hour, :, :]
+            speed = (u**2 + v**2)**0.5 * 1.94384
+            var = speed
+            label = "Kecepatan Angin (knot)"
+            cmap = "YlGnBu"
+            is_vector = True
+        elif "prmsl" in parameter:
+            var = ds["prmslmsl"][forecast_hour, :, :] / 100
+            label = "Tekanan Permukaan Laut (hPa)"
+            cmap = "cool"
+            is_contour = True
+        else:
+            st.error("⚠️ Parameter tidak ditemukan.")
+            st.stop()
+    except KeyError:
+        st.error("❌ Parameter tidak tersedia dalam dataset.")
+        st.write("Tersedia:", list(ds.data_vars))
         st.stop()
 
-    # Potong wilayah Sumatera dan atur dimensi
-    var = var.sel(lat=slice(5, 0), lon=slice(95, 106)).transpose("lat", "lon")
-    if is_vector:
-        u = u.sel(lat=slice(5, 0), lon=slice(95, 106)).transpose("lat", "lon")
-        v = v.sel(lat=slice(5, 0), lon=slice(95, 106)).transpose("lat", "lon")
+    # Potong wilayah dan urutkan dimensi
+    try:
+        lat_slice = slice(5, 0) if var.lat[0] > var.lat[-1] else slice(0, 5)
+        var = var.sel(lat=lat_slice, lon=slice(95, 106)).transpose("lat", "lon")
+        if is_vector:
+            u = u.sel(lat=lat_slice, lon=slice(95, 106)).transpose("lat", "lon")
+            v = v.sel(lat=lat_slice, lon=slice(95, 106)).transpose("lat", "lon")
+    except Exception as e:
+        st.error(f"❌ Gagal slicing data: {e}")
+        st.stop()
 
-    # Buat peta
+    # Cek NaN
+    if np.isnan(var.to_numpy()).all():
+        st.error("❌ Semua data bernilai NaN. Coba ganti waktu atau parameter.")
+        st.stop()
+
+    # Mulai plotting
     fig = plt.figure(figsize=(10, 6))
     ax = plt.axes(projection=ccrs.PlateCarree())
     ax.set_extent([95, 106, 0, 5], crs=ccrs.PlateCarree())
@@ -85,7 +96,7 @@ if st.sidebar.button("🔎 Tampilkan Visualisasi"):
     ax.add_feature(cfeature.BORDERS, linestyle=':')
     ax.add_feature(cfeature.LAND, facecolor='lightgray')
 
-    # Judul waktu valid
+    # Judul waktu
     valid_time = ds.time[forecast_hour].values
     valid_dt = pd.to_datetime(str(valid_time))
     valid_str = valid_dt.strftime("%HUTC %a %d %b %Y")
@@ -93,24 +104,23 @@ if st.sidebar.button("🔎 Tampilkan Visualisasi"):
     ax.set_title(f"{label} Valid {valid_str}", loc="left", fontsize=10, fontweight="bold")
     ax.set_title(f"GFS {tstr}", loc="right", fontsize=10, fontweight="bold")
 
-    # Plot utama
-    if is_contour:
-        cs = var.plot.contour(ax=ax, transform=ccrs.PlateCarree(),
-                              levels=15, colors='black', linewidths=0.8,
-                              add_colorbar=False)
-        ax.clabel(cs, inline=1, fontsize=8)
-    else:
-        pc = var.plot.pcolormesh(ax=ax, cmap=cmap, transform=ccrs.PlateCarree(),
-                                 cbar_kwargs={"label": label}, add_colorbar=True)
+    # Plot
+    try:
+        if is_contour:
+            cs = var.plot.contour(ax=ax, transform=ccrs.PlateCarree(),
+                                  levels=15, colors='black', linewidths=0.8,
+                                  add_colorbar=False)
+            ax.clabel(cs, inline=1, fontsize=8)
+        else:
+            pc = var.plot.pcolormesh(ax=ax, cmap=cmap, transform=ccrs.PlateCarree(),
+                                     cbar_kwargs={"label": label}, add_colorbar=True)
 
-        # Vektor angin
-        if is_vector:
-            ax.quiver(u.lon.values[::5], u.lat.values[::5],
-                      u.values[::5, ::5], v.values[::5, ::5],
-                      transform=ccrs.PlateCarree(), scale=700, width=0.002, color='black')
+            if is_vector:
+                ax.quiver(u.lon.values[::5], u.lat.values[::5],
+                          u.values[::5, ::5], v.values[::5, ::5],
+                          transform=ccrs.PlateCarree(), scale=700, width=0.002, color='black')
+    except Exception as e:
+        st.error(f"❌ Gagal mem-plot data: {e}")
+        st.stop()
 
-    # Tampilkan ke Streamlit
     st.pyplot(fig)
-    st.write("Shape var:", var.shape)
-st.write("Lat:", var.lat.values.shape)
-st.write("Lon:", var.lon.values.shape)
